@@ -1,0 +1,4 @@
+interface:
+  display_name: "高清地形自驾路线图"
+  short_description: "只需逐日行程，制作真实公路、立体地形与沿线累计里程高清地图"
+  default_prompt: "请使用 $roadtrip-terrain-map，根据我提供的每天行程制作高清地形路线图。"

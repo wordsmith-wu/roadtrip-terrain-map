@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.packages/
+.mplconfig/
+.env
+.env.*
+data/
+output/
+*.npz
+*.ttf
+*.ttc
