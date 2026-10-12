@@ -4,13 +4,13 @@
 
 源文件关系：
 
-- `make_route_map.py`：Cartopy 主图、密集区局部图、地形、默认海洋/湖泊/河流、国境线、沿线累计、右侧行程、PNG/SVG/预览导出。海洋由国家陆地面补集得到，无需单独海洋数据；`--no-water-system` 仅用于复现旧版。
+- `make_route_map.py`：Cartopy 主图、密集区局部图、地形、默认海洋/湖泊/河流、国境线、沿线累计、右侧行程、PNG/SVG/预览导出，以及可选静态彩色天气图标。海洋由国家陆地面补集得到，无需单独海洋数据；`--no-water-system` 仅用于复现旧版。
 - `terrain_relief.py`：真实 DEM 晕渲，支持 exaggeration 参数，默认2.5；示例强地形开关传5。
 - `fetch_terrain.py`：Terrarium 解码与拼接。
 - `fetch_road_routes.py`：OSRM 获取、记录 URL/时间及缓存。
 - `itinerary_v3.py` / `itinerary_v2.py`：本次最终行程及其继承来源，不应把 v2 旧备注带入新图。
 
-本次最新组合：`make_route_map.py --terrain --china-border --mileage --large-text --strong-terrain`，输出 `output/v9-strong-terrain/`。本次总里程10,363.5 km是案例结果，不是默认常数；不含尼雅接入、楼兰往返等未建模路段。托格伦夏村和乌红线塑形点、门堂乡位置均属这个案例，不能推广到其他同名地点。
+无天气组合：`make_route_map.py --terrain --china-border --mileage --large-text --strong-terrain`。追加 `--weather-print` 可复现静态天气版，输出 `output/v15-weather-complete-icons/`；须先按 [天气规范](weather.md) 准备快照，模板默认读取 `output/v11-weather-interactive/weather.json`，该数据不随 skill 分发。本次总里程10,363.5 km是案例结果，不是默认常数；不含尼雅接入、楼兰往返等未建模路段。托格伦夏村和乌红线塑形点、门堂乡位置均属这个案例，不能推广到其他同名地点。
 
 ## 适配到新行程前必须调整
 
@@ -24,5 +24,6 @@
 6. 根据天数、长地名和住宿文案调整侧栏行高/列数或画布。累积标签只调整屏幕偏移，不移动路由端点。
 7. 探测运行时依赖和 CJK 字体，不依赖原机器 `.packages` 或硬编码 Windows 字体；使用项目虚拟环境，记录依赖。
 8. 替换本次特有的遗址排除脚注、数据来源说明和输出版本目录。使用内部路线状态反映真实缺口。
+9. 请求天气时替换快照路径、年份/数据类型脚注、地点关联和 emoji 字体；不得把案例的 2026 年预报标签用于其他数据。案例使用 `records[].place` 关联 `P` 名称，新工程宜用稳定地点 ID；按地点和日期去重。保留默认原点渲染后 alpha 裁切的修复。模板布局是案例验证结果，不保证任意行程无碰撞；检查最终图标边界及密集区，尤其留意 Matplotlib 私有行布局 API 的版本差异。
 
 只修改本次地图样式时优先直接复用原项目已验证的数据。只改字体、地形或标签位置无需再次联网请求道路；核验 geometry、distance、里程 JSON 与上一版一致即可。

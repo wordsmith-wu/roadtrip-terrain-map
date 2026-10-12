@@ -23,6 +23,17 @@ from shapely.geometry import shape, box
 from shapely.ops import unary_union
 
 TERRAIN = '--terrain' in sys.argv
+WEATHER_PRINT = '--weather-print' in sys.argv
+WEATHER_LABELS = []
+WEATHER_ICONS = []
+if WEATHER_PRINT:
+    from collections import defaultdict
+    weather_snapshot = json.loads((ROOT/'output/v11-weather-interactive/weather.json').read_text(encoding='utf-8'))
+    weather_places = defaultdict(list)
+    for record in weather_snapshot['records']:
+        if record not in weather_places[record['place']]:
+            weather_places[record['place']].append(record)
+    weather_names = {0:'晴',1:'大部晴',2:'多云',3:'阴',45:'雾',48:'雾凇',51:'小毛毛雨',53:'毛毛雨',55:'强毛毛雨',56:'冻毛毛雨',57:'强冻毛毛雨',61:'小雨',63:'中雨',65:'大雨',66:'冻雨',67:'强冻雨',71:'小雪',73:'中雪',75:'大雪',77:'米雪',80:'阵雨',81:'中阵雨',82:'强阵雨',85:'阵雪',86:'强阵雪',95:'雷暴',96:'雷暴冰雹',99:'强雷暴冰雹'}
 CHINA_BORDER = '--china-border' in sys.argv
 MILEAGE = '--mileage' in sys.argv
 LARGE_TEXT = '--large-text' in sys.argv
@@ -39,6 +50,8 @@ if STRONG_TERRAIN:
     OUT = ROOT / 'output' / 'v9-strong-terrain'
 if WATER_SYSTEM:
     OUT = ROOT / 'output' / 'v10-water-system'
+if WEATHER_PRINT:
+    OUT = ROOT / 'output' / 'v15-weather-complete-icons'
 OUT.mkdir(exist_ok=True, parents=True)
 for fn in ['msyh.ttc', 'msyhbd.ttc', 'simkai.ttf']:
     font_manager.fontManager.addfont('C:/Windows/Fonts/' + fn)
@@ -99,7 +112,7 @@ def ft(x, y, s, size=14, color=INK, **kw):
 ft(.046, .948, '成都出发 · 新疆十四日环线', 40, fontfamily='KaiTi')
 ft(.048, .914, '9月24日—10月7日   /   '+('立体地形晕渲 · 公路路网' if TERRAIN else '公路路网版')+'   /   托格伦夏村 · 乌红线', 15, color=MUTED)
 ft(.95, .951, f'{cumulative_km[-1]:,.1f}' if MILEAGE else '14', 40 if MILEAGE else 49, color='#b76d43', ha='right')
-ft(.95, .922, 'km · 14天已计算路网累计' if MILEAGE else '天 · 山河之间', 13, color=MUTED, ha='right')
+ft(.95, .922, 'km · 14天已计算路网' if MILEAGE else '天 · 山河之间', 13, color=MUTED, ha='right')
 
 ax = fig.add_axes([.035, .235, .68, .655], projection=PROJ)
 ax.set_extent([73.2, 107.2, 29.0, 50.0], crs=GEO)
@@ -201,10 +214,22 @@ def point(a, name, offset, label=None, size=14, marker='o'):
     lon, lat = P[name]
     a.plot(lon, lat, marker=marker, ms=5.5, mec=INK, mfc=PAPER, mew=1.1,
            transform=GEO, zorder=8)
-    a.annotate(label or name, xy=(lon,lat), xycoords=GEO._as_mpl_transform(a),
+    label_text = label or name
+    if WEATHER_PRINT and name in weather_places:
+        if name == '白哈巴':
+            offset = (-185,-25)
+        for record in weather_places[name]:
+            low, high = record.get('temperature_2m_min'), record.get('temperature_2m_max')
+            temperature = f'{low:.0f}～{high:.0f}℃' if low is not None and high is not None else '暂无数据'
+            label_text += f"\n{record['date'][5:].replace('-', '/')}          {temperature}"
+        size = 13 if a is ax else 11
+    annotation = a.annotate(label_text, xy=(lon,lat), xycoords=GEO._as_mpl_transform(a),
                xytext=offset, textcoords='offset points', fontsize=size, color=INK,
                arrowprops=dict(arrowstyle='-', lw=.55, color='#9a9d89'),
                path_effects=[patheffects.withStroke(linewidth=3, foreground=PAPER)], zorder=10)
+    if WEATHER_PRINT:
+        WEATHER_LABELS.append((a, annotation))
+        WEATHER_ICONS.append((a, annotation, name, (label or name).count('\n')+1, size))
 
 for name, off in OFF.items():
     point(ax, name, off, '门堂乡\n（青海久治）' if name == '门堂' else None,
@@ -234,7 +259,7 @@ for day in range(1,15):
     pts = np.array(ROADS[day]['routes'][0]['geometry']['coordinates'])
     if MILEAGE:
         lon,lat=pts[-1]
-        ax.annotate(f'D{day} · 累计 {cumulative_km[day-1]:,.1f} km',
+        ax.annotate(f'D{day} · {cumulative_km[day-1]:,.1f} km',
                     xy=(lon,lat),xycoords=GEO._as_mpl_transform(ax),
                     xytext=MILEAGE_OFFSETS[day],textcoords='offset points',
                     fontsize=15.5 if LARGE_TEXT else 11,color=COLORS[day-1],weight='bold',zorder=15,
@@ -358,6 +383,69 @@ if CHINA_BORDER:
         'geometry':mapping(china_border)}]},ensure_ascii=False),encoding='utf-8')
 assert len(DAYS) == 14
 assert DAYS[0][1][0] == DAYS[-1][1][-1] == '成都'
+if WEATHER_PRINT:
+    from matplotlib.text import Text, Annotation
+    from datetime import datetime
+    stamp = datetime.fromisoformat(weather_snapshot['retrieved_utc']).strftime('%Y-%m-%d %H:%M UTC')
+    ft(.365,.052,'天气：2026年行程当日预报 · 最低～最高温（℃）',10,color='#426c79')
+    ft(.365,.037,f'Open-Meteo · {stamp} 快照；远期预报需复核。',9,color='#426c79')
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for axes in (ax, inset):
+        labels = [label for owner,label in WEATHER_LABELS if owner is axes]
+        obstacles = [Text.get_window_extent(t,renderer).expanded(1.03,1.1)
+                     for t in axes.texts if t not in labels and isinstance(t,Annotation)]
+        for label in labels:
+            original = label.get_position()
+            best, best_score = original, float('inf')
+            candidates = [original] + [(original[0]+dx,original[1]+dy)
+                for radius in (25,50,80,115,155,200)
+                for dx,dy in ((radius,0),(-radius,0),(0,radius),(0,-radius),
+                              (radius,radius),(-radius,radius),(radius,-radius),(-radius,-radius))]
+            for candidate in candidates:
+                label.set_position(candidate)
+                label.update_positions(renderer)
+                bounds = Text.get_window_extent(label,renderer).expanded(1.07,1.15)
+                area = sum(max(0,min(bounds.x1,b.x1)-max(bounds.x0,b.x0))*max(0,min(bounds.y1,b.y1)-max(bounds.y0,b.y0)) for b in obstacles)
+                outside = max(0,axes.bbox.x0-bounds.x0)+max(0,bounds.x1-axes.bbox.x1)+max(0,axes.bbox.y0-bounds.y0)+max(0,bounds.y1-axes.bbox.y1)
+                score = area*100 + outside*10000 + (candidate[0]-original[0])**2 + (candidate[1]-original[1])**2
+                if score < best_score:
+                    best,best_score = candidate,score
+            label.set_position(best)
+            label.update_positions(renderer)
+            obstacles.append(Text.get_window_extent(label,renderer).expanded(1.07,1.15))
+    (OUT/'weather.json').write_text(json.dumps(weather_snapshot,ensure_ascii=False,indent=2),encoding='utf-8')
+    # Use the same Unicode weather emoji as the HTML, rendered with Windows' color emoji font.
+    from PIL import Image, ImageDraw, ImageFont
+    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+    emoji_font = ImageFont.truetype('C:/Windows/Fonts/seguiemj.ttf',96)
+    emoji_codes = {0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌦️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'❄️',95:'⛈️',96:'⛈️',99:'⛈️'}
+    for axes, label, name, heading_lines, size in WEATHER_ICONS:
+        # Match Matplotlib's computed multiline baselines exactly.
+        label.update_positions(renderer)
+        _, line_info, _ = label._get_layout(renderer)
+        for row, record in enumerate(weather_places.get(name,[])):
+            if record.get('weather_code') not in emoji_codes:
+                continue  # Missing/unknown code is not a sunny forecast.
+            # Segoe UI Emoji's color layers are clipped with Pillow's centered
+            # anchor. Render at a padded default origin before alpha-cropping.
+            canvas = Image.new('RGBA',(256,256))
+            ImageDraw.Draw(canvas).text((40,40),emoji_codes.get(record['weather_code'],'🌡️'),font=emoji_font,embedded_color=True)
+            bounds = canvas.getbbox()
+            assert bounds and bounds[0] > 0 and bounds[1] > 0 and bounds[2] < 256 and bounds[3] < 256
+            cropped = canvas.crop(bounds)
+            line = line_info[heading_lines+row]
+            dx, dy = label.get_position()
+            # Measure the actual font rather than assuming a fixed date width.
+            # Reserve a full slot, and constrain BOTH icon dimensions to avoid adjacent rows.
+            date_text = record['date'][5:].replace('-', '/')
+            date_width = renderer.get_text_width_height_descent(date_text,label.get_fontproperties(),False)[0]*72/fig.dpi
+            slot_width = renderer.get_text_width_height_descent('          ',label.get_fontproperties(),False)[0]*72/fig.dpi
+            icon_size = min(size*.9, slot_width-6)
+            icon = OffsetImage(np.asarray(cropped),zoom=icon_size/max(cropped.width,cropped.height))
+            axes.add_artist(AnnotationBbox(icon,label.xy,xycoords=GEO._as_mpl_transform(axes),
+                xybox=(dx+date_width+slot_width/2,dy+line[2][1]*72/fig.dpi+size*.35),boxcoords='offset points',
+                frameon=False,box_alignment=(.5,.5),zorder=12))
 fig.savefig(OUT / 'xinjiang-route-map.png', dpi=300)
 fig.savefig(OUT / 'xinjiang-route-map.svg')
 fig.savefig(OUT / 'preview.png', dpi=65)
